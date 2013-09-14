@@ -1,0 +1,14 @@
+<section>
+  {{#each articles}}
+    <article>
+      <header>
+        <h2>{{title}}</h2>
+        <div class="meta">
+          by {{author}} on
+          <time>{{published_at}}</time>
+        </div>
+      </header>
+      <p>{{content}}</p>
+    </article>
+  {{/each}}
+</section>
