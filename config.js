@@ -13,18 +13,16 @@ config = {
 
         // Example mail config
         // Visit http://support.ghost.org/mail for instructions
-        // ```
-        //  mail: {
-        //      transport: 'SMTP',
-        //      options: {
-        //          service: 'Mailgun',
-        //          auth: {
-        //              user: '', // mailgun username
-        //              pass: ''  // mailgun password
-        //          }
-        //      }
-        //  },
-        // ```
+         mail: {
+             transport: 'SMTP',
+             options: {
+                 service: 'Mailgun',
+                 auth: {
+                     user: 'postmaster@sandboxe8cb97807eed4748ad72e94f6d2d5041.mailgun.org', // mailgun username
+                     pass: '7c021e5ef768707fbb10c64d5394aa7f'  // mailgun password
+                 }
+             }
+         },
 
         database: {
             client: 'sqlite3',
@@ -49,7 +47,16 @@ config = {
     // Configure your URL and mail settings here
     production: {
         url: 'http://my-ghost-blog.com',
-        mail: {},
+        mail: {
+           transport: 'SMTP',
+           options: {
+               service: 'Mailgun',
+               auth: {
+                   user: 'postmaster@sandboxe8cb97807eed4748ad72e94f6d2d5041.mailgun.org', // mailgun username
+                   pass: '7c021e5ef768707fbb10c64d5394aa7f'  // mailgun password
+               }
+           }
+        },
         database: {
             client: 'sqlite3',
             connection: {
