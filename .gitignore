@@ -1,0 +1,14 @@
+node_modules
+bower_components
+*.log
+pids
+logs
+results
+coverage
+reports
+
+# Sublime project files
+*.sublime-project
+*.sublime-workspace
+.tern-port
+.DS_Store
