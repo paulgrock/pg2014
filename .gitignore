@@ -21,7 +21,6 @@ public/vendor
 *.sublime-workspace
 .tern-port
 .DS_Store
-*.css
 
 # JetBrains IDE files
 .idea/
