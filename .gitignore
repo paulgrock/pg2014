@@ -1,8 +1,6 @@
-<<<<<<< HEAD
 node_modules
 bower_components
 *.log
-=======
 lib-cov
 *.seed
 *.log
@@ -11,28 +9,19 @@ lib-cov
 *.out
 *.pid
 *.gz
+content/data/*.db
 
->>>>>>> 497581005e168d5fe72782b9bd79f85dadcd75f9
 pids
 logs
 results
 coverage
 reports
-<<<<<<< HEAD
-=======
 .sass-cache
 node_modules
 public/vendor
->>>>>>> 497581005e168d5fe72782b9bd79f85dadcd75f9
 
 # Sublime project files
 *.sublime-project
 *.sublime-workspace
 .tern-port
 .DS_Store
-<<<<<<< HEAD
-=======
-
-# JetBrains IDE files
-.idea/
->>>>>>> 497581005e168d5fe72782b9bd79f85dadcd75f9
