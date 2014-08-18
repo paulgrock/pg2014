@@ -77,8 +77,8 @@ var path           = require('path'),
                 },
                 livereload: {
                     files: [
-                        'content/themes/casper/assets/css/*.css',
-                        'content/themes/casper/assets/js/*.js',
+                        'content/themes/**/assets/css/*.css',
+                        'content/themes/**/assets/js/*.js',
                         'core/client/assets/css/*.css',
                         'core/built/scripts/*.js'
                     ],
@@ -112,6 +112,31 @@ var path           = require('path'),
                         node_env: 'testing'
                     }
                 }
+            },
+
+
+            less: {
+              dev: {
+                files: [{
+                  expand: true,
+                  cwd: 'content/themes/pg2014/assets/css/',
+                  src: [
+                    '*.less'
+                  ],
+                  dest: 'content/themes/pg2014/assets/css/',
+                  ext: ".css"
+                }]
+              }
+            },
+
+            autoprefixer: {
+              options: {
+                browsers: ['last 2 version', 'ie >= 8']
+              },
+              dev: {
+                src: "content/themes/pg2014/assets/css/foo.css",
+                dest: "content/themes/pg2014/assets/css/foo.css",
+              }
             },
 
             // ### grunt-contrib-jshint
