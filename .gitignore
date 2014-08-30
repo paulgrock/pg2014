@@ -10,6 +10,8 @@ lib-cov
 *.pid
 *.gz
 content/data/*.db
+.tmp/
+core/built/
 
 pids
 logs

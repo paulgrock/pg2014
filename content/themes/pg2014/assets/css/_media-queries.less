@@ -1,0 +1,41 @@
+// Sizes
+
+@xs: 30em;
+@sm: 40em;
+@md: 50em;
+@lg: 60em;
+@xl: 70em;
+@xxl: 80em;
+
+.bp(@name, @props) {
+  & when (@name = xs) {
+    @media screen and (min-width: @xs) {
+      @props();
+    }
+  }
+  & when (@name = sm) {
+  @media screen and (min-width: @sm) {
+    @props();
+  }
+  }
+  & when (@name = md) {
+    @media screen and (min-width: @md) {
+      @props();
+    }
+  }
+  & when (@name = lg) {
+    @media screen and (min-width: @lg) {
+      @props();
+    }
+  }
+  & when (@name = xl) {
+    @media screen and (min-width: @xl) {
+      @props();
+    }
+  }
+  & when (@name = xxl) {
+    @media screen and (min-width: @xxl) {
+      @props();
+    }
+  }
+}

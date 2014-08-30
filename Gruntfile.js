@@ -86,6 +86,12 @@ var path           = require('path'),
                         livereload: true
                     }
                 },
+                styles: {
+                  files: [
+                    'content/themes/**/assets/css/*.less'
+                  ],
+                  tasks: ["less:dev", "autoprefixer"]
+                },
                 express: {
                     files:  ['core/server.js', 'core/server/**/*.js'],
                     tasks:  ['express:dev'],
@@ -121,7 +127,8 @@ var path           = require('path'),
                   expand: true,
                   cwd: 'content/themes/pg2014/assets/css/',
                   src: [
-                    '*.less'
+                    '*.less',
+                    "!_*.less"
                   ],
                   dest: 'content/themes/pg2014/assets/css/',
                   ext: ".css"
@@ -134,8 +141,8 @@ var path           = require('path'),
                 browsers: ['last 2 version', 'ie >= 8']
               },
               dev: {
-                src: "content/themes/pg2014/assets/css/foo.css",
-                dest: "content/themes/pg2014/assets/css/foo.css",
+                src: "content/themes/pg2014/assets/css/main.css",
+                dest: "content/themes/pg2014/assets/css/main.css",
               }
             },
 
