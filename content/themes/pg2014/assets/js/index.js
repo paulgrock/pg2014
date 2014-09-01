@@ -8,8 +8,6 @@
 
     $(document).ready(function(){
 
-        $(".post-content").fitVids();
-
         function casperFullImg() {
             $("img").each( function() {
                 var contentWidth = $(".post-content").outerWidth(); // Width of the content
