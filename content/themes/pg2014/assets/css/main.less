@@ -1,48 +1,60 @@
 @import "_normalize";
+@import "_fonts";
 @import "_icons";
 @import "_media-queries";
+@import "_colors";
+@import "_util";
+@import "_type";
+@import "_header";
+@import "_post";
+@import "_buttons";
 
 *,
 *:before,
 *:after {
   box-sizing: border-box;
 }
-
+body {
+  font-family: lora, serif;
+  .font-serif--n4;
+  &--night {
+    color: @header-color;
+    background-color: #282828;
+  }
+}
 img, video {
   max-width: 100%;
 }
-
+a:link {
+  color: @link-color;
+  text-decoration: none;
+}
+a:visited {
+  color: darken(@link-color, 15%);
+}
+a:hover,
+a:active {
+  color: darken(@link-color, 25%);
+}
 @sidebar-width: 17em;
 
-body {
-  padding: 1em
-}
-.header--main {
+.footer--main {
+  padding: 1em;
+  background-color: @header-background-color;
+  color: @header-color;
   .bp(sm, {
     position: fixed;
-    top: 1em;
-    left: 1em;
     bottom: 0;
     width: @sidebar-width;
   });
 }
-
-.footer--main {
-  .bp(sm, {
-    position: fixed;
-    bottom: 1em;
-    left: 1em;
-    width: @sidebar-width;
-  });
-}
-
 .content-container {
+  padding: 1em;
   .bp(sm, {
-    margin-left: @sidebar-width + 2em;
+    margin-left: @sidebar-width;
   });
 
 }
-
 .logo-container {
   max-width: 17em;
   display: block;

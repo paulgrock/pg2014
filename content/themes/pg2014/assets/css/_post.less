@@ -1,0 +1,23 @@
+.post {
+  & + & {
+    border-top: 1px solid @border-color;
+    padding-top: 1em;
+  }
+}
+.post__title {
+  margin: 0;
+  font-size: @font-size--largest;
+  .bp(sm, {
+    font-size: @font-size--jumbo;
+  });
+}
+.post__meta {
+  font-size: @font-size--small;
+}
+.read-more {
+  display: block;
+}
+.post__author {
+  margin: 0;
+  display: inline-block;
+}

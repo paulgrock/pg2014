@@ -1,0 +1,35 @@
+.header--main {
+  padding: 1em;
+  background-color: @header-background-color;
+  color: @header-color;
+  .bp(sm, {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    width: @sidebar-width;
+  });
+}
+.logo--pg {
+  max-width: 100%;
+  // max height workaround from http://stackoverflow.com/questions/7570917/svg-height-incorrectly-calculated-in-webkit-browsers
+  max-height: 100%;
+}
+.page-title {
+  .u-align-center;
+  margin: 0;
+  .bp(sm, {
+    .u-align-left;
+  });
+}
+.nav-list {
+   list-style-type: none;
+   padding: 0;
+   margin: 0;
+   display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+}
+.nav-list__item {
+  display: inline-block;
+}

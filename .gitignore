@@ -11,7 +11,7 @@ lib-cov
 *.gz
 content/data/*.db
 .tmp/
-core/built/
+core/built
 
 pids
 logs
