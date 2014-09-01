@@ -76,7 +76,9 @@
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 413 194" width="100%" class="logo--pg" preserveAspectRatio="xMinYMin meet"><title>paulgrock.com</title><path fill="#00B0D8" d="m0 193.3h36.3 12 145.1v-72.5 -12 -108.8h-193.3v193.3l0 0zm181.3-12h-133.1v-60.5h133.1v60.5l0 0zm-169.3-169.3h169.3v96.8h-145.1v72.5h-24.3v-169.3l0 0zM157.1 36.3 157.1 36.3 157.1 36.3 157.1 36.3 157.1 36.3h-120.8v48.3h120.8v-48.3l0 0zm-12 36.3h-96.8v-24.3h96.8v24.3l0 0zM219 0v193.3h193.3v-108.8 -12 -24.3 -12 -36.3h-193.3l0 0 0 0 0 0zm181.3 72.5h-108.8v48.3h72.5v24.3h-96.8v-96.8h133.1v24.3l0 0 0 0 0 0zm-145.1-36.3v120.8h120.8v-48.3h-72.5v-24.3h96.8v96.8h-169.3v-169.3h169.3v24.3h-145.1l00 0 0 0 0 0 0z"/></svg>
         </a>
         <h1 class="page-title">{{@blog.title}}</h1>
-        <h2 class="page-description">{{@blog.description}}</h2>
+        {{#if @blog.description}}
+          <h2 class="page-description">{{@blog.description}}</h2>
+        {{/if}}
     </div>
     <nav class="nav-main overlay clearfix">
         <ul class="nav-list">
