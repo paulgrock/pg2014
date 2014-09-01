@@ -67,11 +67,11 @@
   </svg>
   <header class="header--main {{#if @blog.cover}}" style="background-image: url({{@blog.cover}}){{else}}no-cover{{/if}}" role="banner">
       <div class="header--main__inner">
-        {{#if @blog.logo}}
+        {{!-- {{#if @blog.logo}}
           <a class="blog-logo" href="{{@blog.url}}">
             <img src="{{@blog.logo}}" alt="Blog Logo" />
           </a>
-        {{/if}}
+        {{/if}} --}}
         <a class="logo-container" href="/">
           <svg width="100%" viewBox="2 2 410 200" class="logo--pg" preserveAspectRatio="xMinYMin meet" xmlns="http://www.w3.org/2000/svg">
           <title>pauglrock.com</title>
@@ -134,7 +134,6 @@
   {{ghost_foot}}
 
   {{! The main JavaScript file for Casper }}
-  <script type="text/javascript" src="{{asset "js/jquery.fitvids.js"}}"></script>
   <script type="text/javascript" src="{{asset "js/index.js"}}"></script>
 
 </body>

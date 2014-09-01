@@ -429,6 +429,11 @@ th {
 .u-align-left {
   text-align: left;
 }
+.u-align-center--img {
+  display: block;
+  margin-right: auto;
+  margin-left: auto;
+}
 .header--main {
   padding: 1em;
   background-color: #282828;

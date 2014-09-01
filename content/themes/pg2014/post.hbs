@@ -8,8 +8,8 @@
         <header class="{{post_class}}__header">
             <h1 class="{{post_class}}__title">{{title}}</h1>
             <section class="{{post_class}}__meta">
-                <h4 class="{{post_class}}__author"><a href="{{url}}">{{author.name}}</a></h4>
-                <time class="{{post_class}}__date" datetime="{{date format='YYYY-MM-DD'}}">{{date format="DD MMMM YYYY"}}</time> {{tags prefix=" on "}}
+                <h4 class="{{post_class}}__author">By {{author.name}}</h4> on
+                <time class="{{post_class}}__date" datetime="{{date format='YYYY-MM-DD'}}">{{date format="MMMM, DD YYYY"}}</time> {{tags prefix=" on "}}
             </section>
         </header>
 
@@ -19,7 +19,7 @@
 
         <footer class="{{post_class}}__footer">
           {{! Everything inside the #author tags pulls data from the author }}
-          {{#author}}
+          {{!-- {{#author}}
 
               <section class="author">
                   {{#if bio}}
@@ -33,7 +33,7 @@
                   </div>
               </section>
 
-          {{/author}}
+          {{/author}} --}}
 
           {{!-- <section class="share">
               <h4>Share this post</h4>
@@ -65,5 +65,5 @@
   </nav>
 </main>
 
-<link rel="stylesheet" href="assets/css/prism.css">
-<script src="assets/js/prism.js"></script>
+<link rel="stylesheet" href="{{asset "css/prism.css"}}">
+<script src="{{asset "js/prism.js"}}"></script>
