@@ -476,11 +476,6 @@ th {
   text-align: center;
   margin: 0;
 }
-@media screen and (min-width: 40em) {
-  .page-title {
-    text-align: left;
-  }
-}
 .nav-list {
   list-style-type: none;
   padding: 0;
