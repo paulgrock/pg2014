@@ -572,6 +572,7 @@ svg:hover path {
 .content-container {
   padding: 1em;
   min-height: 100vh;
+  background: transparent url("../images/pg-background.jpg") 0 0 repeat;
 }
 @media screen and (min-width: 40em) {
   .content-container {
