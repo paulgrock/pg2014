@@ -8,6 +8,7 @@
 @import "_header";
 @import "_post";
 @import "_buttons";
+@import (less) "prism.css";
 
 *,
 *:before,
@@ -53,11 +54,12 @@ svg:hover path {
 }
 .content-container {
   padding: 1em;
-  min-height: 100vh;
-  // background-image: repeating-linear-gradient(135deg, #e7e7e9, #e7e7e9 15px, #dcdddf 15px, #dcdddf 20px);
-  background: transparent url("../images/pg-background.jpg") 0 0 repeat;
+  // background-color: #e7e7e9;
+  // background-image: repeating-linear-gradient(45deg, #e7e7e9, #e7e7e9 10px, #dcdddf 10px, #dcdddf 15px);
+  // background: transparent url("../images/pg-background.jpg") 0 0 repeat;
   .bp(sm, {
     margin-left: @sidebar-width;
+    min-height: 100vh;
   });
 
 }

@@ -86,10 +86,3 @@
 
     };
 })(jQuery);
-
-(function ($) {
-  // Can't figure out how to get prism to work with markdown editor in ghost
-  $("code[class*='language-']").each(function(idx, code) {
-    code.parentElement.className += code.className;
-  });
-})(jQuery);
