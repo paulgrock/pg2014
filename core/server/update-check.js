@@ -1,10 +1,12 @@
 // # Update Checking Service
 //
 // Makes a request to Ghost.org to check if there is a new version of Ghost available.
-// The service is provided in return for users opting in to anonymous usage data collection
-// Blog owners can opt-out of update checks by setting 'updateCheck: false' in their config.js
+// The service is provided in return for users opting in to anonymous usage data collection.
+//
+// Blog owners can opt-out of update checks by setting `privacy: { useUpdateCheck: false }` in their config.js
 //
 // The data collected is as follows:
+//
 // - blog id - a hash of the blog hostname, pathname and dbHash. No identifiable info is stored.
 // - ghost version
 // - node version
@@ -23,64 +25,97 @@ var crypto   = require('crypto'),
     https    = require('https'),
     moment   = require('moment'),
     semver   = require('semver'),
-    when     = require('when'),
-    nodefn   = require('when/node'),
+    Promise  = require('bluebird'),
     _        = require('lodash'),
     url      = require('url'),
 
     api      = require('./api'),
     config   = require('./config'),
     errors   = require('./errors'),
-    packageInfo = require('../../package.json'),
-
+    i18n     = require('./i18n'),
     internal = {context: {internal: true}},
     allowedCheckEnvironments = ['development', 'production'],
     checkEndpoint = 'updates.ghost.org',
-    currentVersion = packageInfo.version;
+    currentVersion = config.ghostVersion;
 
 function updateCheckError(error) {
+    api.settings.edit(
+        {settings: [{key: 'nextUpdateCheck', value: Math.round(Date.now() / 1000 + 24 * 3600)}]},
+        internal
+    );
+
     errors.logError(
         error,
-        'Checking for updates failed, your blog will continue to function.',
-        'If you get this error repeatedly, please seek help from https://ghost.org/forum.'
+        i18n.t('errors.update-check.checkingForUpdatesFailed.error'),
+        i18n.t('errors.update-check.checkingForUpdatesFailed.help', {url: 'http://support.ghost.org'})
     );
+}
+
+/**
+ * If the custom message is intended for current version, create and store a custom notification.
+ * @param {Object} message {id: uuid, version: '0.9.x', content: '' }
+ * @return {*|Promise}
+ */
+function createCustomNotification(message) {
+    if (!semver.satisfies(currentVersion, message.version)) {
+        return Promise.resolve();
+    }
+
+    var notification = {
+        type: 'info',
+        location: 'top',
+        custom: true,
+        uuid: message.id,
+        dismissible: true,
+        message: message.content
+    },
+    getAllNotifications = api.notifications.browse({context: {internal: true}}),
+    getSeenNotifications = api.settings.read(_.extend({key: 'seenNotifications'}, internal));
+
+    return Promise.join(getAllNotifications, getSeenNotifications, function joined(all, seen) {
+        var isSeen      = _.includes(JSON.parse(seen.settings[0].value || []), notification.uuid),
+            isDuplicate = _.some(all.notifications, {message: notification.message});
+
+        if (!isSeen && !isDuplicate) {
+            return api.notifications.add({notifications: [notification]}, {context: {internal: true}});
+        }
+    });
 }
 
 function updateCheckData() {
     var data = {},
-        ops = [],
         mailConfig = config.mail;
-
-    ops.push(api.settings.read(_.extend(internal, {key: 'dbHash'})).otherwise(errors.rejectError));
-    ops.push(api.settings.read(_.extend(internal, {key: 'activeTheme'})).otherwise(errors.rejectError));
-    ops.push(api.settings.read(_.extend(internal, {key: 'activeApps'}))
-        .then(function (response) {
-            var apps = response.settings[0];
-            try {
-                apps = JSON.parse(apps.value);
-            } catch (e) {
-                return errors.rejectError(e);
-            }
-
-            return _.reduce(apps, function (memo, item) { return memo === '' ? memo + item : memo + ', ' + item; }, '');
-        }).otherwise(errors.rejectError));
-    ops.push(api.posts.browse().otherwise(errors.rejectError));
-    ops.push(api.users.browse(internal).otherwise(errors.rejectError));
-    ops.push(nodefn.call(exec, 'npm -v').otherwise(errors.rejectError));
 
     data.ghost_version   = currentVersion;
     data.node_version    = process.versions.node;
     data.env             = process.env.NODE_ENV;
     data.database_type   = config.database.client;
-    data.email_transport = mailConfig && (mailConfig.options && mailConfig.options.service ? mailConfig.options.service : mailConfig.transport);
+    data.email_transport = mailConfig &&
+    (mailConfig.options && mailConfig.options.service ?
+        mailConfig.options.service :
+        mailConfig.transport);
 
-    return when.settle(ops).then(function (descriptors) {
-        var hash             = descriptors[0].value.settings[0],
-            theme            = descriptors[1].value.settings[0],
-            apps             = descriptors[2].value,
-            posts            = descriptors[3].value,
-            users            = descriptors[4].value,
-            npm              = descriptors[5].value,
+    return Promise.props({
+        hash: api.settings.read(_.extend({key: 'dbHash'}, internal)).reflect(),
+        theme: api.settings.read(_.extend({key: 'activeTheme'}, internal)).reflect(),
+        apps: api.settings.read(_.extend({key: 'activeApps'}, internal))
+            .then(function (response) {
+                var apps = response.settings[0];
+
+                apps = JSON.parse(apps.value);
+
+                return _.reduce(apps, function (memo, item) { return memo === '' ? memo + item : memo + ', ' + item; }, '');
+            }).reflect(),
+        posts: api.posts.browse().reflect(),
+        users: api.users.browse(internal).reflect(),
+        npm: Promise.promisify(exec)('npm -v').reflect()
+    }).then(function (descriptors) {
+        var hash             = descriptors.hash.value().settings[0],
+            theme            = descriptors.theme.value().settings[0],
+            apps             = descriptors.apps.value(),
+            posts            = descriptors.posts.value(),
+            users            = descriptors.users.value(),
+            npm              = descriptors.npm.value(),
             blogUrl          = url.parse(config.url),
             blogId           = blogUrl.hostname + blogUrl.pathname.replace(/\//, '') + hash.value;
 
@@ -90,116 +125,115 @@ function updateCheckData() {
         data.post_count      = posts && posts.meta && posts.meta.pagination ? posts.meta.pagination.total : 0;
         data.user_count      = users && users.users && users.users.length ? users.users.length : 0;
         data.blog_created_at = users && users.users && users.users[0] && users.users[0].created_at ? moment(users.users[0].created_at).unix() : '';
-        data.npm_version     = _.isArray(npm) && npm[0] ? npm[0].toString().replace(/\n/, '') : '';
+        data.npm_version     = npm.trim();
 
         return data;
-    }).otherwise(updateCheckError);
+    }).catch(updateCheckError);
 }
 
 function updateCheckRequest() {
-    return updateCheckData().then(function (reqData) {
-        var deferred = when.defer(),
-            resData = '',
+    return updateCheckData().then(function then(reqData) {
+        var resData = '',
             headers,
             req;
 
         reqData = JSON.stringify(reqData);
 
         headers = {
-            'Content-Length': reqData.length
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(reqData)
         };
 
-        req = https.request({
-            hostname: checkEndpoint,
-            method: 'POST',
-            headers: headers
-        }, function (res) {
-            res.on('error', function (error) { deferred.reject(error); });
-            res.on('data', function (chunk) { resData += chunk; });
-            res.on('end', function () {
-                try {
-                    resData = JSON.parse(resData);
-                    deferred.resolve(resData);
-                } catch (e) {
-                    deferred.reject('Unable to decode update response');
-                }
+        return new Promise(function p(resolve, reject) {
+            req = https.request({
+                hostname: checkEndpoint,
+                method: 'POST',
+                headers: headers
+            }, function handler(res) {
+                res.on('error', function onError(error) { reject(error); });
+                res.on('data', function onData(chunk) { resData += chunk; });
+                res.on('end', function onEnd() {
+                    try {
+                        resData = JSON.parse(resData);
+                        resolve(resData);
+                    } catch (e) {
+                        reject(i18n.t('errors.update-check.unableToDecodeUpdateResponse.error'));
+                    }
+                });
             });
+
+            req.on('socket', function onSocket(socket) {
+                // Wait a maximum of 10seconds
+                socket.setTimeout(10000);
+                socket.on('timeout', function onTimeout() {
+                    req.abort();
+                });
+            });
+
+            req.on('error', function onError(error) {
+                reject(error);
+            });
+
+            req.write(reqData);
+            req.end();
         });
-
-        req.write(reqData);
-        req.end();
-
-        req.on('error', function (error) {
-            deferred.reject(error);
-        });
-
-        return deferred.promise;
     });
 }
 
-// ## Update Check Response
-// Handles the response from the update check
-// Does two things with the information received:
-// 1. Updates the time we can next make a check
-// 2. Checks if the version in the response is new, and updates the notification setting
+/**
+ * Handles the response from the update check
+ * Does three things with the information received:
+ * 1. Updates the time we can next make a check
+ * 2. Checks if the version in the response is new, and updates the notification setting
+ * 3. Create custom notifications is response from UpdateCheck as "messages" array which has the following structure:
+ *
+ * "messages": [{
+ *   "id": ed9dc38c-73e5-4d72-a741-22b11f6e151a,
+ *   "version": "0.5.x",
+ *   "content": "<p>Hey there! 0.6 is available, visit <a href=\"https://ghost.org/download\">Ghost.org</a> to grab your copy now<!/p>"
+ * ]}
+ *
+ * @param {Object} response
+ * @return {Promise}
+ */
 function updateCheckResponse(response) {
-    var ops = [];
-
-    ops.push(
-        api.settings.edit(
-            {settings: [{key: 'nextUpdateCheck', value: response.next_check}]},
-            internal
-        )
-        .otherwise(errors.rejectError),
-        api.settings.edit(
-            {settings: [{key: 'displayUpdateNotification', value: response.version}]},
-            internal
-        )
-        .otherwise(errors.rejectError)
-    );
-
-    return when.settle(ops).then(function (descriptors) {
-        descriptors.forEach(function (d) {
-            if (d.state === 'rejected') {
-                errors.rejectError(d.reason);
-            }
-        });
-        return when.resolve();
+    return Promise.all([
+        api.settings.edit({settings: [{key: 'nextUpdateCheck', value: response.next_check}]}, internal),
+        api.settings.edit({settings: [{key: 'displayUpdateNotification', value: response.version}]}, internal)
+    ]).then(function () {
+        var messages = response.messages || [];
+        return Promise.map(messages, createCustomNotification);
     });
 }
 
 function updateCheck() {
-    var deferred = when.defer();
-
     // The check will not happen if:
     // 1. updateCheck is defined as false in config.js
     // 2. we've already done a check this session
     // 3. we're not in production or development mode
-    if (config.updateCheck === false || _.indexOf(allowedCheckEnvironments, process.env.NODE_ENV) === -1) {
+    // TODO: need to remove config.updateCheck in favor of config.privacy.updateCheck in future version (it is now deprecated)
+    if (config.updateCheck === false || config.isPrivacyDisabled('useUpdateCheck') || _.indexOf(allowedCheckEnvironments, process.env.NODE_ENV) === -1) {
         // No update check
-        deferred.resolve();
+        return Promise.resolve();
     } else {
-        api.settings.read(_.extend(internal, {key: 'nextUpdateCheck'})).then(function (result) {
+        return api.settings.read(_.extend({key: 'nextUpdateCheck'}, internal)).then(function then(result) {
             var nextUpdateCheck = result.settings[0];
 
             if (nextUpdateCheck && nextUpdateCheck.value && nextUpdateCheck.value > moment().unix()) {
                 // It's not time to check yet
-                deferred.resolve();
+                return;
             } else {
                 // We need to do a check
                 return updateCheckRequest()
                     .then(updateCheckResponse)
-                    .otherwise(updateCheckError);
+                    .catch(updateCheckError);
             }
-        }).otherwise(updateCheckError)
-            .then(deferred.resolve);
+        }).catch(updateCheckError);
     }
-
-    return deferred.promise;
 }
 
 function showUpdateNotification() {
-    return api.settings.read(_.extend(internal, {key: 'displayUpdateNotification'})).then(function (response) {
+    return api.settings.read(_.extend({key: 'displayUpdateNotification'}, internal)).then(function then(response) {
         var display = response.settings[0];
 
         // Version 0.4 used boolean to indicate the need for an update. This special case is
@@ -210,9 +244,10 @@ function showUpdateNotification() {
         }
 
         if (display && display.value && currentVersion && semver.gt(display.value, currentVersion)) {
-            return when(display.value);
+            return display.value;
         }
-        return when(false);
+
+        return false;
     });
 }
 

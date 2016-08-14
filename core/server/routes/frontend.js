@@ -1,39 +1,47 @@
-var frontend    = require('../controllers/frontend'),
-    config      = require('../config'),
-    express     = require('express'),
-    utils       = require('../utils'),
+var express         = require('express'),
+    path            = require('path'),
+    config          = require('../config'),
+    frontend        = require('../controllers/frontend'),
+    channels        = require('../controllers/frontend/channels'),
+    utils           = require('../utils'),
 
     frontendRoutes;
 
-frontendRoutes = function () {
+frontendRoutes = function frontendRoutes() {
     var router = express.Router(),
-        subdir = config.paths.subdir;
+        subdir = config.paths.subdir,
+        routeKeywords = config.routeKeywords;
 
-    // ### Frontend routes
-    router.get('/rss/', frontend.rss);
-    router.get('/rss/:page/', frontend.rss);
-    router.get('/feed/', function redirect(req, res) {
-        /*jshint unused:true*/
-        res.set({'Cache-Control': 'public, max-age=' + utils.ONE_YEAR_S});
-        res.redirect(301, subdir + '/rss/');
+    // ### Admin routes
+    router.get(/^\/(logout|signout)\/$/, function redirectToSignout(req, res) {
+        utils.redirect301(res, subdir + '/ghost/signout/');
+    });
+    router.get(/^\/signup\/$/, function redirectToSignup(req, res) {
+        utils.redirect301(res, subdir + '/ghost/signup/');
     });
 
-    // Tags
-    router.get('/tag/:slug/rss/', frontend.rss);
-    router.get('/tag/:slug/rss/:page/', frontend.rss);
-    router.get('/tag/:slug/page/:page/', frontend.tag);
-    router.get('/tag/:slug/', frontend.tag);
+    // redirect to /ghost and let that do the authentication to prevent redirects to /ghost//admin etc.
+    router.get(/^\/((ghost-admin|admin|wp-admin|dashboard|signin|login)\/?)$/, function redirectToAdmin(req, res) {
+        utils.redirect301(res, subdir + '/ghost/');
+    });
 
-    // Authors
-    router.get('/author/:slug/rss/', frontend.rss);
-    router.get('/author/:slug/rss/:page/', frontend.rss);
-    router.get('/author/:slug/page/:page/', frontend.author);
-    router.get('/author/:slug/', frontend.author);
+    // Post Live Preview
+    router.get('/' + routeKeywords.preview + '/:uuid', frontend.preview);
+
+    // Channels
+    router.use(channels.router());
 
     // Default
-    router.get('/page/:page/', frontend.homepage);
-    router.get('/', frontend.homepage);
     router.get('*', frontend.single);
+
+    // setup routes for internal apps
+    // @TODO: refactor this to be a proper app route hook for internal & external apps
+    config.internalApps.forEach(function (appName) {
+        var app = require(path.join(config.paths.internalAppPath, appName));
+        if (app.hasOwnProperty('setupRoutes')) {
+            app.setupRoutes(router);
+        }
+    });
 
     return router;
 };

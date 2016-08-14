@@ -1,22 +1,13 @@
-var when    = require('when'),
-    path    = require('path'),
-    nodefn  = require('when/node'),
+var config  = require('../config'),
+    Promise = require('bluebird'),
     fs      = require('fs-extra'),
+    pUnlink = Promise.promisify(fs.unlink),
     storage = require('../storage'),
     errors  = require('../errors'),
+    utils   = require('./utils'),
+    i18n    = require('../i18n'),
 
     upload;
-
-
-
-function isImage(type, ext) {
-    if ((type === 'image/jpeg' || type === 'image/png' || type === 'image/gif' || type === 'image/svg+xml')
-            && (ext === '.jpg' || ext === '.jpeg' || ext === '.png' || ext === '.gif' || ext === '.svg' || ext === '.svgz')) {
-        return true;
-    }
-    return false;
-}
-
 
 /**
  * ## Upload API Methods
@@ -30,35 +21,31 @@ upload = {
      *
      * @public
      * @param {{context}} options
-     * @returns {Promise} Success
+     * @returns {Promise<String>} location of uploaded file
      */
-    'add': function (options) {
-        var store = storage.get_storage(),
-            type,
-            ext,
-            filepath;
+    add: Promise.method(function (options) {
+        var store = storage.getStorage();
 
-        if (!options.uploadimage || !options.uploadimage.type || !options.uploadimage.path) {
-            return when.reject(new errors.NoPermissionError('Please select an image.'));
+        // Public interface of the storage module's `save` method requires
+        // the file's name to be on the .name property.
+        options.name = options.originalname;
+        options.type = options.mimetype;
+
+        // Check if a file was provided
+        if (!utils.checkFileExists(options)) {
+            throw new errors.NoPermissionError(i18n.t('errors.api.upload.pleaseSelectImage'));
         }
 
-        type = options.uploadimage.type;
-        ext = path.extname(options.uploadimage.name).toLowerCase();
-        filepath = options.uploadimage.path;
+        // Check if the file is valid
+        if (!utils.checkFileIsValid(options, config.uploads.contentTypes, config.uploads.extensions)) {
+            throw new errors.UnsupportedMediaTypeError(i18n.t('errors.api.upload.pleaseSelectValidImage'));
+        }
 
-        return when(isImage(type, ext)).then(function (result) {
-            if (!result) {
-                return when.reject(new errors.UnsupportedMediaTypeError('Please select a valid image.'));
-            }
-        }).then(function () {
-            return store.save(options.uploadimage);
-        }).then(function (url) {
-            return when.resolve(url);
-        }).finally(function () {
+        return store.save(options).finally(function () {
             // Remove uploaded file from tmp location
-            return nodefn.call(fs.unlink, filepath);
+            return pUnlink(options.path);
         });
-    }
+    })
 };
 
 module.exports = upload;

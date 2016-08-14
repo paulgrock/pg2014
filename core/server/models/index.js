@@ -1,43 +1,46 @@
-var _      = require('lodash'),
-    when   = require('when'),
+/**
+ * Dependencies
+ */
+
+var _ = require('lodash'),
+    exports,
     models;
 
-models = {
-    Post: require('./post').Post,
-    User: require('./user').User,
-    Role: require('./role').Role,
-    Permission: require('./permission').Permission,
-    Permissions: require('./permission').Permissions,
-    Settings: require('./settings').Settings,
-    Tag: require('./tag').Tag,
-    Base: require('./base'),
-    App: require('./app').App,
-    AppField: require('./appField').AppField,
-    AppSetting: require('./appSetting').AppSetting,
-    Client: require('./client').Client,
-    Accesstoken: require('./accesstoken').Accesstoken,
-    Refreshtoken: require('./refreshtoken').Refreshtoken,
+// enable event listeners
+require('./base/listeners');
 
-    init: function () {
-        return true;
-    },
-    // ### deleteAllContent
-    // Delete all content from the database (posts, tags, tags_posts)
-    deleteAllContent: function () {
-        var self = this;
+/**
+ * Expose all models
+ */
+exports = module.exports;
 
-        return self.Post.findAll().then(function (posts) {
-            return when.all(_.map(posts.toJSON(), function (post) {
-                return self.Post.destroy({id: post.id});
-            }));
-        }).then(function () {
-            return self.Tag.findAll().then(function (tags) {
-                return when.all(_.map(tags.toJSON(), function (tag) {
-                    return self.Tag.destroy({id: tag.id});
-                }));
-            });
-        });
-    }
-};
+models = [
+    'accesstoken',
+    'app-field',
+    'app-setting',
+    'app',
+    'client-trusted-domain',
+    'client',
+    'permission',
+    'post',
+    'refreshtoken',
+    'role',
+    'settings',
+    'subscriber',
+    'tag',
+    'user'
+];
 
-module.exports = models;
+function init() {
+    exports.Base = require('./base');
+
+    models.forEach(function (name) {
+        _.extend(exports, require('./' + name));
+    });
+}
+
+/**
+ * Expose `init`
+ */
+
+exports.init = init;

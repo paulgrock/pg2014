@@ -1,14 +1,125 @@
 var _                = require('lodash'),
+    validator        = require('validator'),
+    pipeline         = require('../utils/pipeline'),
     dataProvider     = require('../models'),
     settings         = require('./settings'),
-    mail             = require('./mail'),
+    mail             = require('./../mail'),
+    apiMail          = require('./mail'),
     globalUtils      = require('../utils'),
     utils            = require('./utils'),
-    users            = require('./users'),
-    when             = require('when'),
     errors           = require('../errors'),
     config           = require('../config'),
+    i18n             = require('../i18n'),
     authentication;
+
+/**
+ * Returns setup status
+ *
+ * @return {Promise<Boolean>}
+ */
+function checkSetup() {
+    return authentication.isSetup().then(function then(result) {
+        return result.setup[0].status;
+    });
+}
+
+/**
+ * Allows an assertion to be made about setup status.
+ *
+ * @param  {Boolean} status True: setup must be complete. False: setup must not be complete.
+ * @return {Function} returns a "task ready" function
+ */
+function assertSetupCompleted(status) {
+    return function checkPermission(__) {
+        return checkSetup().then(function then(isSetup) {
+            if (isSetup === status) {
+                return __;
+            }
+
+            var completed = i18n.t('errors.api.authentication.setupAlreadyCompleted'),
+                notCompleted = i18n.t('errors.api.authentication.setupMustBeCompleted');
+
+            function throwReason(reason) {
+                throw new errors.NoPermissionError(reason);
+            }
+
+            if (isSetup) {
+                throwReason(completed);
+            } else {
+                throwReason(notCompleted);
+            }
+        });
+    };
+}
+
+function setupTasks(setupData) {
+    var tasks;
+
+    function validateData(setupData) {
+        return utils.checkObject(setupData, 'setup').then(function then(checked) {
+            var data = checked.setup[0];
+
+            return {
+                name: data.name,
+                email: data.email,
+                password: data.password,
+                blogTitle: data.blogTitle,
+                status: 'active'
+            };
+        });
+    }
+
+    function setupUser(userData) {
+        var context = {context: {internal: true}},
+            User = dataProvider.User;
+
+        return User.findOne({role: 'Owner', status: 'all'}).then(function then(owner) {
+            if (!owner) {
+                throw new errors.InternalServerError(
+                    i18n.t('errors.api.authentication.setupUnableToRun')
+                );
+            }
+
+            return User.setup(userData, _.extend({id: owner.id}, context));
+        }).then(function then(user) {
+            return {
+                user: user,
+                userData: userData
+            };
+        });
+    }
+
+    function doSettings(data) {
+        var user = data.user,
+            blogTitle = data.userData.blogTitle,
+            context = {context: {user: data.user.id}},
+            userSettings;
+
+        if (!blogTitle || typeof blogTitle !== 'string') {
+            return user;
+        }
+
+        userSettings = [
+            {key: 'title', value: blogTitle.trim()},
+            {key: 'description', value: i18n.t('common.api.authentication.sampleBlogDescription')}
+        ];
+
+        return settings.edit({settings: userSettings}, context).return(user);
+    }
+
+    function formatResponse(user) {
+        return user.toJSON({context: {internal: true}});
+    }
+
+    tasks = [
+        validateData,
+        setupUser,
+        doSettings,
+        formatResponse
+    ];
+
+    return pipeline(tasks, setupData);
+}
 
 /**
  * ## Authentication API Methods
@@ -18,225 +129,427 @@ var _                = require('lodash'),
 authentication = {
 
     /**
-     * ## Generate Reset Token
-     * generate a reset token for a given email address
-     * @param {{passwordreset}}
-     * @returns {Promise(passwordreset)} message
+     * @description generate a reset token for a given email address
+     * @param {Object} resetRequest
+     * @returns {Promise<Object>} message
      */
-    generateResetToken: function generateResetToken(object) {
-        var expires = Date.now() + globalUtils.ONE_DAY_MS,
-            email;
+    generateResetToken: function generateResetToken(resetRequest) {
+        var tasks;
 
-        return authentication.isSetup().then(function (result) {
-            var setup = result.setup[0].status;
+        function validateRequest(resetRequest) {
+            return utils.checkObject(resetRequest, 'passwordreset').then(function then(data) {
+                var email = data.passwordreset[0].email;
 
-            if (!setup) {
-                return when.reject(new errors.NoPermissionError('Setup must be completed before making this request.'));
-            }
-
-            return utils.checkObject(object, 'passwordreset');
-        }).then(function (checkedPasswordReset) {
-            if (checkedPasswordReset.passwordreset[0].email) {
-                email = checkedPasswordReset.passwordreset[0].email;
-            } else {
-                return when.reject(new errors.BadRequestError('No email provided.'));
-            }
-
-            return users.read({ context: {internal: true}, email: email, status: 'active' }).then(function (foundUser) {
-                if (!foundUser) {
-                    when.reject(new errors.NotFound('Invalid email address'));
+                if (typeof email !== 'string' || !validator.isEmail(email)) {
+                    throw new errors.BadRequestError(
+                        i18n.t('errors.api.authentication.noEmailProvided')
+                    );
                 }
-                return settings.read({context: {internal: true}, key: 'dbHash'});
-            }).then(function (response) {
-                var dbHash = response.settings[0].value;
-                return dataProvider.User.generateResetToken(email, expires, dbHash);
-            }).then(function (resetToken) {
-                var baseUrl = config.forceAdminSSL ? (config.urlSSL || config.url) : config.url,
-                    resetUrl = baseUrl.replace(/\/$/, '') + '/ghost/reset/' + resetToken + '/';
 
-                return mail.generateContent({data: { resetUrl: resetUrl  }, template: 'reset-password'});
-            }).then(function (emailContent) {
+                return email;
+            });
+        }
+
+        function generateToken(email) {
+            var settingsQuery = {context: {internal: true}, key: 'dbHash'};
+
+            return settings.read(settingsQuery).then(function then(response) {
+                var dbHash = response.settings[0].value,
+                    expiresAt = Date.now() + globalUtils.ONE_DAY_MS;
+
+                return dataProvider.User.generateResetToken(email, expiresAt, dbHash);
+            }).then(function then(resetToken) {
+                return {
+                    email: email,
+                    resetToken: resetToken
+                };
+            });
+        }
+
+        function sendResetNotification(data) {
+            var baseUrl = config.forceAdminSSL ? (config.urlSSL || config.url) : config.url,
+                resetUrl = baseUrl.replace(/\/$/, '') +
+                    '/ghost/reset/' +
+                    globalUtils.encodeBase64URLsafe(data.resetToken) + '/';
+
+            return mail.utils.generateContent({
+                data: {
+                    resetUrl: resetUrl
+                },
+                template: 'reset-password'
+            }).then(function then(content) {
                 var payload = {
                     mail: [{
                         message: {
-                            to: email,
-                            subject: 'Reset Password',
-                            html: emailContent.html,
-                            text: emailContent.text
+                            to: data.email,
+                            subject: i18n.t('common.api.authentication.mail.resetPassword'),
+                            html: content.html,
+                            text: content.text
                         },
                         options: {}
                     }]
                 };
-                return mail.send(payload, {context: {internal: true}});
-            }).then(function () {
-                return when.resolve({passwordreset: [{message: 'Check your email for further instructions.'}]});
-            }).otherwise(function (error) {
-                return when.reject(error);
+
+                return apiMail.send(payload, {context: {internal: true}});
             });
-        });
+        }
+
+        function formatResponse() {
+            return {
+                passwordreset: [
+                    {message: i18n.t('common.api.authentication.mail.checkEmailForInstructions')}
+                ]
+            };
+        }
+
+        tasks = [
+            assertSetupCompleted(true),
+            validateRequest,
+            generateToken,
+            sendResetNotification,
+            formatResponse
+        ];
+
+        return pipeline(tasks, resetRequest);
     },
 
     /**
      * ## Reset Password
      * reset password if a valid token and password (2x) is passed
-     * @param {{passwordreset}}
-     * @returns {Promise(passwordreset)} message
+     * @param {Object} resetRequest
+     * @returns {Promise<Object>} message
      */
-    resetPassword: function resetPassword(object) {
-        var resetToken,
-            newPassword,
-            ne2Password;
+    resetPassword: function resetPassword(resetRequest) {
+        var tasks;
 
-        return authentication.isSetup().then(function (result) {
-            var setup = result.setup[0].status;
+        function validateRequest(resetRequest) {
+            return utils.checkObject(resetRequest, 'passwordreset');
+        }
 
-            if (!setup) {
-                return when.reject(new errors.NoPermissionError('Setup must be completed before making this request.'));
-            }
+        function doReset(resetRequest) {
+            var settingsQuery = {context: {internal: true}, key: 'dbHash'},
+                data = resetRequest.passwordreset[0],
+                resetToken = data.token,
+                newPassword = data.newPassword,
+                ne2Password = data.ne2Password;
 
-            return utils.checkObject(object, 'passwordreset');
-        }).then(function (checkedPasswordReset) {
-            resetToken = checkedPasswordReset.passwordreset[0].token;
-            newPassword = checkedPasswordReset.passwordreset[0].newPassword;
-            ne2Password = checkedPasswordReset.passwordreset[0].ne2Password;
-
-            return settings.read({context: {internal: true}, key: 'dbHash'}).then(function (response) {
-                var dbHash = response.settings[0].value;
-                return dataProvider.User.resetPassword(resetToken, newPassword, ne2Password, dbHash);
-            }).then(function () {
-                return when.resolve({passwordreset: [{message: 'Password changed successfully.'}]});
-            }).otherwise(function (error) {
-                return when.reject(new errors.UnauthorizedError(error.message));
+            return settings.read(settingsQuery).then(function then(response) {
+                return dataProvider.User.resetPassword({
+                    token: resetToken,
+                    newPassword: newPassword,
+                    ne2Password: ne2Password,
+                    dbHash: response.settings[0].value
+                });
+            }).catch(function (error) {
+                throw new errors.UnauthorizedError(error.message);
             });
-        });
+        }
+
+        function formatResponse() {
+            return {
+                passwordreset: [
+                    {message: i18n.t('common.api.authentication.mail.passwordChanged')}
+                ]
+            };
+        }
+
+        tasks = [
+            assertSetupCompleted(true),
+            validateRequest,
+            doReset,
+            formatResponse
+        ];
+
+        return pipeline(tasks, resetRequest);
     },
 
     /**
      * ### Accept Invitation
-     * @param {User} object the user to create
-     * @returns {Promise(User}} Newly created user
+     * @param {Object} invitation an invitation object
+     * @returns {Promise<Object>}
      */
-    acceptInvitation: function acceptInvitation(object) {
-        var resetToken,
-            newPassword,
-            ne2Password,
-            name,
-            email;
+    acceptInvitation: function acceptInvitation(invitation) {
+        var tasks;
 
-        return authentication.isSetup().then(function (result) {
-            var setup = result.setup[0].status;
+        function validateInvitation(invitation) {
+            return utils.checkObject(invitation, 'invitation');
+        }
 
-            if (!setup) {
-                return when.reject(new errors.NoPermissionError('Setup must be completed before making this request.'));
-            }
+        function processInvitation(invitation) {
+            var User = dataProvider.User,
+                settingsQuery = {context: {internal: true}, key: 'dbHash'},
+                data = invitation.invitation[0],
+                resetToken = data.token,
+                newPassword = data.password,
+                email = data.email,
+                name = data.name;
 
-            return utils.checkObject(object, 'invitation');
-        }).then(function (checkedInvitation) {
-            resetToken = checkedInvitation.invitation[0].token;
-            newPassword = checkedInvitation.invitation[0].password;
-            ne2Password = checkedInvitation.invitation[0].password;
-            email = checkedInvitation.invitation[0].email;
-            name = checkedInvitation.invitation[0].name;
-
-            return settings.read({context: {internal: true}, key: 'dbHash'}).then(function (response) {
-                var dbHash = response.settings[0].value;
-                return dataProvider.User.resetPassword(resetToken, newPassword, ne2Password, dbHash);
-            }).then(function (user) {
-                return dataProvider.User.edit({name: name, email: email}, {id: user.id});
-            }).then(function () {
-                return when.resolve({invitation: [{message: 'Invitation accepted.'}]});
-            }).otherwise(function (error) {
-                return when.reject(new errors.UnauthorizedError(error.message));
-            });
-        });
-    },
-
-    isSetup: function () {
-        return dataProvider.User.query(function (qb) {
-                qb.whereIn('status', ['active', 'warn-1', 'warn-2', 'warn-3', 'warn-4', 'locked']);
-            }).fetch().then(function (users) {
-                if (users) {
-                    return when.resolve({ setup: [{status: true}]});
-                } else {
-                    return when.resolve({ setup: [{status: false}]});
-                }
-            });
-    },
-
-    setup: function (object) {
-        var setupUser,
-            internal = {context: {internal: true}};
-
-        return authentication.isSetup().then(function (result) {
-            var setup = result.setup[0].status;
-
-            if (setup) {
-                return when.reject(new errors.NoPermissionError('Setup has already been completed.'));
-            }
-
-            return utils.checkObject(object, 'setup');
-        }).then(function (checkedSetupData) {
-            setupUser = {
-                name: checkedSetupData.setup[0].name,
-                email: checkedSetupData.setup[0].email,
-                password: checkedSetupData.setup[0].password,
-                blogTitle: checkedSetupData.setup[0].blogTitle,
-                status: 'active'
-            };
-
-            return dataProvider.User.findOne({role: 'Owner', status: 'all'});
-        }).then(function (ownerUser) {
-            if (ownerUser) {
-                return dataProvider.User.setup(setupUser, _.extend(internal, {id: ownerUser.id}));
-            } else {
-                return dataProvider.Role.findOne({name: 'Owner'}).then(function (ownerRole) {
-                    setupUser.roles = [ownerRole.id];
-                    return dataProvider.User.add(setupUser, internal);
+            return settings.read(settingsQuery).then(function then(response) {
+                return User.resetPassword({
+                    token: resetToken,
+                    newPassword: newPassword,
+                    ne2Password: newPassword,
+                    dbHash: response.settings[0].value
                 });
-            }
-        }).then(function (user) {
-            var userSettings = [];
+            }).then(function then(user) {
+                return User.edit({name: name, email: email, slug: ''}, {id: user.id});
+            }).catch(function (error) {
+                throw new errors.UnauthorizedError(error.message);
+            });
+        }
 
-            userSettings.push({key: 'email', value: setupUser.email});
+        function formatResponse() {
+            return {
+                invitation: [
+                    {message: i18n.t('common.api.authentication.mail.invitationAccepted')}
+                ]
+            };
+        }
 
-            // Handles the additional values set by the setup screen.
-            if (!_.isEmpty(setupUser.blogTitle)) {
-                userSettings.push({key: 'title', value: setupUser.blogTitle});
-                userSettings.push({key: 'description', value: 'Thoughts, stories and ideas.'});
+        tasks = [
+            assertSetupCompleted(true),
+            validateInvitation,
+            processInvitation,
+            formatResponse
+        ];
+
+        return pipeline(tasks, invitation);
+    },
+
+    /**
+     * ### Check for invitation
+     * @param {Object} options
+     * @returns {Promise<Object>} An invitation status
+     */
+    isInvitation: function isInvitation(options) {
+        var tasks,
+            localOptions = _.cloneDeep(options || {});
+
+        function processArgs(options) {
+            var email = options.email;
+
+            if (typeof email !== 'string' || !validator.isEmail(email)) {
+                throw new errors.BadRequestError(
+                    i18n.t('errors.api.authentication.invalidEmailReceived')
+                );
             }
-            setupUser = user.toJSON();
-            return settings.edit({settings: userSettings}, {context: {user: setupUser.id}});
-        }).then(function () {
+
+            return email;
+        }
+
+        function checkInvitation(email) {
+            return dataProvider.User
+                .where({email: email, status: 'invited'})
+                .count('id')
+                .then(function then(count) {
+                    return !!count;
+                });
+        }
+
+        function formatResponse(isInvited) {
+            return {invitation: [{valid: isInvited}]};
+        }
+
+        tasks = [
+            processArgs,
+            assertSetupCompleted(true),
+            checkInvitation,
+            formatResponse
+        ];
+
+        return pipeline(tasks, localOptions);
+    },
+
+    /**
+     * Checks the setup status
+     * @return {Promise}
+     */
+    isSetup: function isSetup() {
+        var tasks,
+            validStatuses = ['active', 'warn-1', 'warn-2', 'warn-3', 'warn-4', 'locked'];
+
+        function checkSetupStatus() {
+            return dataProvider.User
+                .where('status', 'in', validStatuses)
+                .count('id')
+                .then(function (count) {
+                    return !!count;
+                });
+        }
+
+        function formatResponse(isSetup) {
+            return {setup: [
+                {
+                    status: isSetup,
+                    // Pre-populate from config if, and only if the values exist in config.
+                    title: config.title || undefined,
+                    name: config.user_name || undefined,
+                    email: config.user_email || undefined
+                }
+            ]};
+        }
+
+        tasks = [
+            checkSetupStatus,
+            formatResponse
+        ];
+
+        return pipeline(tasks);
+    },
+
+    /**
+     * Executes the setup tasks and sends an email to the owner
+     * @param  {Object} setupDetails
+     * @return {Promise<Object>} a user api payload
+     */
+    setup: function setup(setupDetails) {
+        var tasks;
+
+        function doSetup(setupDetails) {
+            return setupTasks(setupDetails);
+        }
+
+        function sendNotification(setupUser) {
             var data = {
                 ownerEmail: setupUser.email
             };
 
-            return mail.generateContent({data: data, template: 'welcome'});
-        }).then(function (emailContent) {
-            var message = {
-                    to: setupUser.email,
-                    subject: 'Your New Ghost Blog',
-                    html: emailContent.html,
-                    text: emailContent.text
-                },
-                payload = {
-                    mail: [{
-                        message: message,
-                        options: {}
-                    }]
-                };
+            return mail.utils.generateContent({data: data, template: 'welcome'})
+                .then(function then(content) {
+                    var message = {
+                            to: setupUser.email,
+                            subject: i18n.t('common.api.authentication.mail.yourNewGhostBlog'),
+                            html: content.html,
+                            text: content.text
+                        },
+                        payload = {
+                            mail: [{
+                                message: message,
+                                options: {}
+                            }]
+                        };
 
-            return mail.send(payload, {context: {internal: true}}).otherwise(function (error) {
-                errors.logError(
-                    error.message,
-                    "Unable to send welcome email, your blog will continue to function.",
-                    "Please see http://support.ghost.org/mail/ for instructions on configuring email."
-                );
-            });
+                    apiMail.send(payload, {context: {internal: true}}).catch(function (error) {
+                        errors.logError(
+                            error.message,
+                            i18n.t(
+                                'errors.api.authentication.unableToSendWelcomeEmail'
+                            ),
+                            i18n.t('errors.api.authentication.checkEmailConfigInstructions', {url: 'http://support.ghost.org/mail/'})
+                        );
+                    });
+                })
+                .return(setupUser);
+        }
 
-        }).then(function () {
-            return when.resolve({ users: [setupUser]});
-        });
+        function formatResponse(setupUser) {
+            return {users: [setupUser]};
+        }
+
+        tasks = [
+            assertSetupCompleted(false),
+            doSetup,
+            sendNotification,
+            formatResponse
+        ];
+
+        return pipeline(tasks, setupDetails);
+    },
+
+    /**
+     * Updates the blog setup
+     * @param  {Object} setupDetails request payload with setup details
+     * @param  {Object} options
+     * @return {Promise<Object>} a User API response payload
+     */
+    updateSetup: function updateSetup(setupDetails, options) {
+        var tasks,
+            localOptions = _.cloneDeep(options || {});
+
+        function processArgs(setupDetails, options) {
+            if (!options.context || !options.context.user) {
+                throw new errors.NoPermissionError(i18n.t('errors.api.authentication.notTheBlogOwner'));
+            }
+
+            return _.assign({setupDetails: setupDetails}, options);
+        }
+
+        function checkPermission(options) {
+            return dataProvider.User.findOne({role: 'Owner', status: 'all'})
+                .then(function (owner) {
+                    if (owner.id !== options.context.user) {
+                        throw new errors.NoPermissionError(i18n.t('errors.api.authentication.notTheBlogOwner'));
+                    }
+
+                    return options.setupDetails;
+                });
+        }
+
+        function formatResponse(user) {
+            return {users: [user]};
+        }
+
+        tasks = [
+            processArgs,
+            assertSetupCompleted(true),
+            checkPermission,
+            setupTasks,
+            formatResponse
+        ];
+
+        return pipeline(tasks, setupDetails, localOptions);
+    },
+
+    /**
+     * Revokes a bearer token.
+     * @param {Object} tokenDetails
+     * @param {Object} options
+     * @return {Promise<Object>} an object containing the revoked token.
+     */
+    revoke: function revokeToken(tokenDetails, options) {
+        var tasks,
+            localOptions = _.cloneDeep(options || {});
+
+        function processArgs(tokenDetails, options) {
+            return _.assign({}, tokenDetails, options);
+        }
+
+        function revokeToken(options) {
+            var providers = [
+                    dataProvider.Refreshtoken,
+                    dataProvider.Accesstoken
+                ],
+                response = {token: options.token};
+
+            function destroyToken(provider, options, providers) {
+                return provider.destroyByToken(options)
+                    .return(response)
+                    .catch(provider.NotFoundError, function () {
+                        if (!providers.length) {
+                            return {
+                                token: tokenDetails.token,
+                                error: i18n.t('errors.api.authentication.invalidTokenProvided')
+                            };
+                        }
+
+                        return destroyToken(providers.pop(), options, providers);
+                    })
+                    .catch(function () {
+                        throw new errors.TokenRevocationError(
+                            i18n.t('errors.api.authentication.tokenRevocationFailed')
+                        );
+                    });
+            }
+
+            return destroyToken(providers.pop(), options, providers);
+        }
+
+        tasks = [
+            processArgs,
+            revokeToken
+        ];
+
+        return pipeline(tasks, tokenDetails, localOptions);
     }
 };
 

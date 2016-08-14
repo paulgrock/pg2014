@@ -1,49 +1,14 @@
 // # Ghost Configuration
-// Setup your Ghost install for various environments
-// Documentation can be found at http://support.ghost.org/config/
+// Setup your Ghost install for various [environments](http://support.ghost.org/config/#about-environments).
+
+// Ghost runs in `development` mode by default. Full documentation can be found at http://support.ghost.org/config/
 
 var path = require('path'),
     config;
 
 config = {
-    // ### Development **(default)**
-    development: {
-        // The url to use when providing links to the site, E.g. in RSS and email.
-        url: 'http://localhost:2368',
-
-        // Example mail config
-        // Visit http://support.ghost.org/mail for instructions
-         mail: {
-             transport: 'SMTP',
-             options: {
-                 service: 'Mailgun',
-                 auth: {
-                     user: 'postmaster@sandboxe8cb97807eed4748ad72e94f6d2d5041.mailgun.org', // mailgun username
-                     pass: '7c021e5ef768707fbb10c64d5394aa7f'  // mailgun password
-                 }
-             }
-         },
-
-        database: {
-            client: 'sqlite3',
-            connection: {
-                filename: path.join(__dirname, '/content/data/ghost-dev.db')
-            },
-            debug: false
-        },
-        server: {
-            // Host to be passed to node's `net.Server#listen()`
-            host: '127.0.0.1',
-            // Port to be passed to node's `net.Server#listen()`, for iisnode set this to `process.env.PORT`
-            port: '2368'
-        },
-        paths: {
-            contentPath: path.join(__dirname, '/content/')
-        }
-    },
-
     // ### Production
-    // When running Ghost in the wild, use the production environment
+    // When running Ghost in the wild, use the production environment.
     // Configure your URL and mail settings here
     production: {
         url: 'http://paulgrock.com',
@@ -64,11 +29,56 @@ config = {
             },
             debug: false
         },
+
+        server: {
+            host: '127.0.0.1',
+            port: '2368'
+        }
+    },
+
+    // ### Development **(default)**
+    development: {
+        // The url to use when providing links to the site, E.g. in RSS and email.
+        // Change this to your Ghost blog's published URL.
+        url: 'http://localhost:2368',
+
+        // Example refferer policy
+        // Visit https://www.w3.org/TR/referrer-policy/ for instructions
+        // default 'origin-when-cross-origin',
+        // referrerPolicy: 'origin-when-cross-origin',
+
+        mail: {
+           transport: 'SMTP',
+           options: {
+               service: 'Mailgun',
+               auth: {
+                   user: 'postmaster@sandboxe8cb97807eed4748ad72e94f6d2d5041.mailgun.org', // mailgun username
+                   pass: '7c021e5ef768707fbb10c64d5394aa7f'  // mailgun password
+               }
+           }
+        },
+
+        // #### Database
+        // Ghost supports sqlite3 (default), MySQL & PostgreSQL
+        database: {
+            client: 'sqlite3',
+            connection: {
+                filename: path.join(__dirname, '/content/data/ghost-dev.db')
+            },
+            debug: false
+        },
+        // #### Server
+        // Can be host & port (default), or socket
         server: {
             // Host to be passed to node's `net.Server#listen()`
             host: '127.0.0.1',
             // Port to be passed to node's `net.Server#listen()`, for iisnode set this to `process.env.PORT`
             port: '2368'
+        },
+        // #### Paths
+        // Specify where your content directory lives
+        paths: {
+            contentPath: path.join(__dirname, '/content/')
         }
     },
 
@@ -83,6 +93,14 @@ config = {
             client: 'sqlite3',
             connection: {
                 filename: path.join(__dirname, '/content/data/ghost-test.db')
+            },
+            pool: {
+                afterCreate: function (conn, done) {
+                    conn.run('PRAGMA synchronous=OFF;' +
+                    'PRAGMA journal_mode=MEMORY;' +
+                    'PRAGMA locking_mode=EXCLUSIVE;' +
+                    'BEGIN EXCLUSIVE; COMMIT;', done);
+                }
             }
         },
         server: {
@@ -135,5 +153,4 @@ config = {
     }
 };
 
-// Export config
 module.exports = config;
